@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>For Robin | A Digital Bloom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Cormorant+Infant:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Cormorant Garamond', serif;
+            background: #050505;
+            overflow: hidden;
+            cursor: none;
+        }
+        
+        .cursor {
+            width: 20px;
+            height: 20px;
+            border: 1px solid rgba(255, 182, 193, 0.6);
+            border-radius: 50%;
+            position: fixed;
+            pointer-events: none;
+            z-index: 1000;
+            transition: transform 0.15s ease-out, background 0.3s;
+            mix-blend-mode: screen;
+        }
+        
+        .cursor.hover {
+            transform: scale(2);
+            background: rgba(255, 182, 193, 0.1);
+        }
+        
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        .ui-layer {
+            position: fixed;
+            z-index: 10;
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 3rem;
+        }
+        
+        .title {
+            font-size: 1.2rem;
+            letter-spacing: 0.3em;
+            color: rgba(255, 182, 193, 0.8);
+            text-transform: uppercase;
+            opacity: 0;
+            animation: fadeIn 2s ease 1s forwards;
+        }
+        
+        .subtitle {
+            font-family: 'Cormorant Infant', serif;
+            font-style: italic;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 0.1em;
+            opacity: 0;
+            animation: fadeIn 2s ease 2s forwards;
+        }
+        
+        .instruction {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 0.8rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            opacity: 0;
+            animation: pulse 3s ease-in-out infinite, fadeIn 2s ease 3s forwards;
+        }
+        
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.6; }
+        }
+        
+        .hidden-input {
+            position: fixed;
+            bottom: -100px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="cursor"></div>
+    
+    <div class="ui-layer">
+        <div>
+            <div class="title">For Robin</div>
+            <div class="subtitle">A flower that never wilts</div>
+        </div>
+        
+        <div class="instruction">
+            Move slowly to breathe • Click to bloom<br>
+            Type her name to grow
+        </div>
+    </div>
+    
+    <div id="canvas-container">
+        <canvas id="flowerCanvas"></canvas>
+    </div>
+    
+    <input type="text" class="hidden-input" id="hiddenInput" autocomplete="off">
+
+    <script>
+        // Cursor
+        const cursor = document.querySelector('.cursor');
+        document.addEventListener('mousemove', (e) => {
+            cursor.style.left = e.clientX - 10 + 'px';
+            cursor.style.top = e.clientY - 10 + 'px';
+        });
+        
+        document.addEventListener('mousedown', () => {
+            cursor.style.transform = 'scale(0.8)';
+        });
+        
+        document.addEventListener('mouseup', () => {
+            cursor.style.transform = 'scale(1)';
+        });
+
+        // Canvas setup
+        const canvas = document.getElementById('flowerCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let mouse = { x: 0, y: 0, vx: 0, vy: 0, lastX: 0, lastY: 0 };
+        let time = 0;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+        
+        // Track mouse velocity for wind effect
+        document.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.vx = e.clientX - mouse.lastX;
+            mouse.vy = e.clientY - mouse.lastY;
+            mouse.lastX = e.clientX;
+            mouse.lastY = e.clientY;
+        });
+
+        // Flower class
+        class Petal {
+            constructor(angle, layer, totalInLayer) {
+                this.angle = angle;
+                this.layer = layer;
+                this.baseAngle = angle;
+                this.length = 80 + layer * 40 + Math.random() * 30;
+                this.width = 30 + layer * 15;
+                this.color = this.generateColor(layer);
+                this.openness = 0;
+                this.targetOpenness = 0.3 + layer * 0.15;
+                this.swaySpeed = 0.5 + Math.random() * 0.5;
+                this.swayOffset = Math.random() * Math.PI * 2;
+                this.breathing = Math.random() * Math.PI * 2;
+            }
+            
+            generateColor(layer) {
+                const colors = [
+                    { h: 340, s: 80, l: 70 }, // Pink
+                    { h: 350, s: 70, l: 65 }, // Rose
+                    { h: 330, s: 60, l: 75 }, // Light pink
+                    { h: 310, s: 50, l: 80 }, // Lavender pink
+                    { h: 280, s: 40, l: 85 }  // Pale violet
+                ];
+                const base = colors[layer % colors.length];
+                const variation = (Math.random() - 0.5) * 20;
+                return `hsl(${base.h + variation}, ${base.s}%, ${base.l}%)`;
+            }
+            
+            update(windX, windY) {
+                // Breathing animation
+                this.breathing += 0.02;
+                const breath = Math.sin(this.breathing) * 0.05;
+                
+                // Smooth opening
+                this.openness += (this.targetOpenness - this.openness) * 0.05;
+                
+                // Sway with wind
+                const sway = Math.sin(time * this.swaySpeed + this.swayOffset) * 0.1;
+                const windEffect = (windX * 0.001) + (this.layer * 0.002);
+                
+                this.angle = this.baseAngle + sway + windEffect + breath;
+            }
+            
+            draw(ctx, x, y) {
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(this.angle);
+                
+                // Create gradient for petal
+                const gradient = ctx.createLinearGradient(0, 0, 0, -this.length);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(0.5, this.color);
+                gradient.addColorStop(1, 'rgba(255, 255, 255, 0.8)');
+                
+                ctx.fillStyle = gradient;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 0.5;
+                
+                // Draw petal shape
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                
+                const openFactor = this.openness;
+                const tipX = Math.sin(openFactor) * this.length * 0.3;
+                const tipY = -Math.cos(openFactor) * this.length;
+                
+                // Curved petal using bezier
+                ctx.bezierCurveTo(
+                    -this.width * 0.5, -this.length * 0.3,
+                    -this.width * 0.3, -this.length * 0.8,
+                    tipX, tipY
+                );
+                
+                ctx.bezierCurveTo(
+                    this.width * 0.3, -this.length * 0.8,
+                    this.width * 0.5, -this.length * 0.3,
+                    0, 0
+                );
+                
+                ctx.fill();
+                ctx.stroke();
+                
+                // Vein line
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(tipX * 0.3, -this.length * 0.5, tipX, tipY);
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+        }
+        
+        class Flower {
+            constructor() {
+                this.x = width / 2;
+                this.y = height / 2 + 100;
+                this.petals = [];
+                this.stemPoints = [];
+                this.pollen = [];
+                this.layers = 5;
+                this.rotation = 0;
+                this.bloomLevel = 0;
+                this.targetBloom = 1;
+                
+                // Create petals in layers
+                for (let layer = 0; layer < this.layers; layer++) {
+                    const count = 5 + layer * 3;
+                    for (let i = 0; i < count; i++) {
+                        const angle = (Math.PI * 2 * i / count) + (layer * 0.3);
+                        this.petals.push(new Petal(angle, layer, count));
+                    }
+                }
+                
+                // Initialize stem points
+                for (let i = 0; i < 20; i++) {
+                    this.stemPoints.push({
+                        x: 0,
+                        y: i * 15,
+                        offset: Math.random() * Math.PI * 2
+                    });
+                }
+                
+                // Pollen particles
+                for (let i = 0; i < 30; i++) {
+                    this.pollen.push({
+                        angle: Math.random() * Math.PI * 2,
+                        distance: Math.random() * 40,
+                        size: Math.random() * 3 + 1,
+                        speed: Math.random() * 0.02 + 0.01
+                    });
+                }
+            }
+            
+            update() {
+                this.x += (width / 2 - this.x) * 0.05;
+                this.y += (height / 2 + 50 - this.y) * 0.05;
+                
+                // Bloom animation
+                this.bloomLevel += (this.targetBloom - this.bloomLevel) * 0.03;
+                
+                // Rotate slowly
+                this.rotation += 0.002;
+                
+                // Update petals
+                this.petals.forEach(petal => {
+                    petal.targetOpenness = 0.2 + (petal.layer * 0.15 * this.bloomLevel);
+                    petal.update(mouse.vx, mouse.vy);
+                });
+                
+                // Update pollen
+                this.pollen.forEach(p => {
+                    p.angle += p.speed;
+                    p.distance += Math.sin(time * 2) * 0.1;
+                });
+                
+                // Stem sway
+                this.stemPoints.forEach((point, i) => {
+                    const sway = Math.sin(time * 0.5 + point.offset) * (i * 0.5);
+                    const windEffect = (mouse.vx * 0.01 * (i / 20));
+                    point.x = sway + windEffect;
+                });
+            }
+            
+            draw(ctx) {
+                // Draw stem
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(100, 150, 100, 0.6)';
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                
+                // Draw curved stem
+                ctx.moveTo(0, 0);
+                for (let i = 1; i < this.stemPoints.length; i++) {
+                    const point = this.stemPoints[i];
+                    const prev = this.stemPoints[i - 1];
+                    const x = point.x;
+                    const y = point.y;
+                    ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                
+                // Leaves on stem
+                [5, 12].forEach(index => {
+                    if (index < this.stemPoints.length) {
+                        const point = this.stemPoints[index];
+                        ctx.save();
+                        ctx.translate(point.x, point.y);
+                        ctx.rotate(Math.sin(time * 0.3 + index) * 0.3);
+                        
+                        ctx.fillStyle = 'rgba(100, 150, 100, 0.5)';
+                        ctx.beginPath();
+                        ctx.ellipse(20, 0, 25, 8, 0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        ctx.beginPath();
+                        ctx.ellipse(-20, 5, 25, 8, -0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                });
+                
+                ctx.restore();
+                
+                // Draw flower center
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                // Draw petals back to front
+                const sortedPetals = [...this.petals].sort((a, b) => b.layer - a.layer);
+                sortedPetals.forEach(petal => petal.draw(ctx, 0, 0));
+                
+                // Draw center (pollen)
+                ctx.fillStyle = '#FFD700';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = 'rgba(255, 215, 0, 0.5)';
+                
+                this.pollen.forEach(p => {
+                    const px = Math.cos(p.angle) * p.distance * this.bloomLevel;
+                    const py = Math.sin(p.angle) * p.distance * this.bloomLevel;
+                    
+                    ctx.beginPath();
+                    ctx.arc(px, py, p.size * this.bloomLevel, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
+            
+            bloom() {
+                this.targetBloom = Math.min(this.targetBloom + 0.2, 1.5);
+                setTimeout(() => {
+                    this.targetBloom = 1;
+                }, 1000);
+            }
+        }
+        
+        // Particle system for atmosphere
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = height + 10;
+                this.size = Math.random() * 2 + 0.5;
+                this.speedY = Math.random() * 0.5 + 0.2;
+                this.speedX = (Math.random() - 0.5) * 0.5;
+                this.opacity = Math.random() * 0.5 + 0.2;
+                this.life = 1;
+                this.decay = Math.random() * 0.002 + 0.001;
+            }
+            
+            update() {
+                this.y -= this.speedY;
+                this.x += this.speedX + Math.sin(time + this.y * 0.01) * 0.5;
+                this.life -= this.decay;
+                
+                if (this.life <= 0 || this.y < -10) {
+                    this.reset();
+                }
+            }
+            
+            draw(ctx) {
+                ctx.fillStyle = `rgba(255, 182, 193, ${this.opacity * this.life})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // Initialize
+        const flower = new Flower();
+        const particles = Array.from({ length: 50 }, () => new Particle());
+        let typedName = '';
+        const targetName = 'robin';
+        
+        // Click to bloom
+        document.addEventListener('click', () => {
+            flower.bloom();
+            createRipple(mouse.x, mouse.y);
+        });
+        
+        // Ripple effect
+        const ripples = [];
+        function createRipple(x, y) {
+            ripples.push({
+                x, y,
+                radius: 0,
+                maxRadius: 100,
+                opacity: 0.5
+            });
+        }
+        
+        // Hidden input for typing
+        const hiddenInput = document.getElementById('hiddenInput');
+        document.addEventListener('click', () => hiddenInput.focus());
+        document.addEventListener('keydown', () => hiddenInput.focus());
+        
+        hiddenInput.addEventListener('input', (e) => {
+            typedName = e.target.value.toLowerCase();
+            
+            // Check if typing "robin"
+            if (typedName.includes('r')) flower.targetBloom = Math.min(flower.targetBloom + 0.1, 2);
+            if (typedName.includes('o')) flower.targetBloom = Math.min(flower.targetBloom + 0.1, 2);
+            if (typedName.includes('b')) flower.targetBloom = Math.min(flower.targetBloom + 0.1, 2);
+            if (typedName.includes('i')) flower.targetBloom = Math.min(flower.targetBloom + 0.1, 2);
+            if (typedName.includes('n')) {
+                flower.targetBloom = 2;
+                // Celebration burst
+                for (let i = 0; i < 20; i++) {
+                    setTimeout(() => createRipple(
+                        width/2 + (Math.random() - 0.5) * 200,
+                        height/2 + (Math.random() - 0.5) * 200
+                    ), i * 50);
+                }
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            time += 0.016;
+            
+            // Clear with fade for trails
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw particles
+            particles.forEach(p => {
+                p.update();
+                p.draw(ctx);
+            });
+            
+            // Draw ripples
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                const r = ripples[i];
+                r.radius += 2;
+                r.opacity -= 0.01;
+                
+                if (r.opacity <= 0) {
+                    ripples.splice(i, 1);
+                    continue;
+                }
+                
+                ctx.strokeStyle = `rgba(255, 182, 193, ${r.opacity})`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            
+            // Update and draw flower
+            flower.update();
+            flower.draw(ctx);
+            
+            // Mouse velocity decay
+            mouse.vx *= 0.95;
+            mouse.vy *= 0.95;
+            
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
